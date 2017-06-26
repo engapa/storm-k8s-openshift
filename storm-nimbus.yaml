@@ -20,10 +20,6 @@ parameters:
 - name: VERSION
   value: "1.1.0"
   required: true
-- name: USER
-  description: User
-  required: true
-  value: "storm"
 - name: CONF_DIR
   description: Conf directory
   required: true
@@ -36,6 +32,12 @@ parameters:
   description: Log Directory
   required: true
   value: "/logs"
+- name: CONFIG_FILE_CONTENS
+  description: Add storm.yaml contents
+  required: true
+  value: |
+    storm.zookeeper.servers: ["zk-0.zk-svc", "zk-1.zk-svc", "zk-2.zk-svc"]
+    nimbus.seeds : ["localhost"]
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
   value: "1Gi"
@@ -50,6 +52,14 @@ parameters:
   value: "2"
 
 objects:
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${NAME}-config
+  data:
+    storm.yaml: >-
+      ${CONFIG_FILE_CONTENS}
+
 - apiVersion: v1
   kind: DeploymentConfig
   metadata:
@@ -67,20 +77,11 @@ objects:
       spec:
         containers:
         - name: ${NAME}
-          image: storm:${VERSION}
-          env:
-          - name: STORM_USER
-            value: ${USER}
-          - name: STORM_CONF_DIR
-            value: ${CONF_DIR}
-          - name: STORM_DATA_DIR
-            value: ${DATA_DIR}
-          - name: STORM_LOG_DIR
-            value: ${LOG_DIR}
+          image: engapa/storm:${VERSION}
           command:
           - /bin/bash
           - -c
-          - storm nimbus
+          - storm --config ${CONF_DIR} nimbus
           resources:
             requests:
               memory: ${RESOURCE_MEMORY_REQ}
@@ -108,4 +109,4 @@ objects:
         volumes:
         - name: config-volume
           configMap:
-            name: storm
+            name: ${NAME}-config
