@@ -1,0 +1,158 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: storm-worker
+  annotations:
+    openshift.io/display-name: Storm-Worker
+    description: Storm Worker
+    iconClass: icon-database
+    tags: database,storm
+labels:
+  template: storm-worker
+parameters:
+- name: NAME
+  value: "storm-worker"
+  required: true
+- name: REPLICAS
+  description: Number of replicas
+  required: true
+  value: "1"
+- name: VERSION
+  value: "1.1.0"
+  required: true
+- name: CONF_DIR
+  description: Conf directory
+  required: true
+  value: "/conf"
+- name: DATA_DIR
+  description: Data directory
+  required: true
+  value: "/data"
+- name: LOG_DIR
+  description: Log Directory
+  required: true
+  value: "/logs"
+- name: NIMBUS_THRIFT_PORT
+  description: Nimbus thrift port
+  required: true
+  value: '6627'
+- name: NIMBUS_SVC_NAME
+  description: Nimbus service name
+  required: true
+  value: "storm-nimbus"
+- name: ZK_SERVERS
+  description: "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)"
+  required: true
+  value: "\"zk-server1\", \"zk-server2\""
+- name: NIMBUS_SEEDS
+  description: >
+    "Nimbus seeds, FQDN values for all seeds in the cluster,
+     format must be: \"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\" (Note quote marks)."
+  required: true
+  value: "\"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.myproject.svc.cluster.local\""
+- name: SUPERVISOR_PORTS
+  description: "Supervisor ports, value format must be: \"port1\", \"port2\" (Note quote marks)"
+  required: true
+  value: "6700, 6701, 6702, 6703"
+- name: CONFIG_FILE_CONTENS
+  description: Add custom contents to configuration file storm.yaml
+  required: true
+  value: |
+    # These properties will be generated automatically by provided params
+    # storm.zookeeper.servers
+    # nimbus.thrift.port
+    # nimbus.seeds
+    # storm.log.dir
+    # storm.local.dir
+    # Add any other properties here
+- name: RESOURCE_MEMORY_REQ
+  description: The memory resource request.
+  value: "500Mi"
+- name: RESOURCE_MEMORY_LIMIT
+  description: The limits for memory resource.
+  value: "1Gi"
+- name: RESOURCE_CPU_REQ
+  description: The CPU resource request.
+  value: "500m"
+- name: RESOURCE_CPU_LIMIT
+  description: The limits for CPU resource.
+  value: "1"
+
+objects:
+
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${NAME}-config
+    labels:
+      app: ${NAME}
+  data:
+    storm.yaml: |
+      ${CONFIG_FILE_CONTENS}
+      # Generated properties
+      storm.zookeeper.servers: [${ZK_SERVERS}]
+      nimbus.thrift.port: ${NIMBUS_THRIFT_PORT}
+      nimbus.seeds : [${NIMBUS_SEEDS}]
+      supervisor.slots.ports: [${SUPERVISOR_PORTS}]
+      storm.local.dir: "${DATA_DIR}"
+      storm.log.dir: "${LOG_DIR}"
+
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    triggers:
+    - type: ConfigChange
+    strategy:
+      type: Rolling
+    replicas: ${REPLICAS}
+    template:
+      metadata:
+        labels:
+          app: ${NAME}
+      spec:
+        containers:
+        - name: ${NAME}
+          image: storm:${VERSION}
+          command:
+          - /bin/bash
+          - -c
+          args:
+          - storm --config ${CONF_DIR}/storm.yaml supervisor
+          resources:
+            requests:
+              memory: ${RESOURCE_MEMORY_REQ}
+              cpu: ${RESOURCE_CPU_REQ}
+            limits:
+              memory: ${RESOURCE_MEMORY_LIMIT}
+              cpu: ${RESOURCE_CPU_LIMIT}
+          livenessProbe:
+            exec:
+             command:
+             - /bin/bash
+             - -c
+             - storm --config ${CONF_DIR}/storm.yaml node-health-check
+             initialDelaySeconds: 15
+             periodSeconds: 5
+          imagePullPolicy: IfNotPresent
+          terminationMessagePath: /dev/termination-log
+          volumeMounts:
+          - name: config-volume
+            mountPath: ${CONF_DIR}
+          - name: data-volume
+            mountPath: ${DATA_DIR}
+          - name: log-volume
+            mountPath: ${LOG_DIR}
+        restartPolicy: Always
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: config-volume
+          configMap:
+            name: ${NAME}-config
+        - name: data-volume
+          emptyDir: {}
+        - name: log-volume
+          emptyDir: {}

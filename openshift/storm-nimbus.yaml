@@ -1,0 +1,213 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: storm-nimbus
+  annotations:
+    openshift.io/display-name: Storm-Nimbus
+    description: Storm Nimbus
+    iconClass: icon-database
+    tags: database,storm
+labels:
+  template: storm-nimbus
+parameters:
+- name: NAME
+  value: "storm-nimbus"
+  required: true
+- name: REPLICAS
+  description: Number of replicas
+  required: true
+  value: "1"
+- name: VERSION
+  value: "1.1.0"
+  required: true
+- name: CONF_DIR
+  description: Conf directory
+  required: true
+  value: "/conf"
+- name: DATA_DIR
+  description: Data directory
+  required: true
+  value: "/data"
+- name: LOG_DIR
+  description: Log Directory
+  required: true
+  value: "/logs"
+- name: PORT
+  description: Nimbus thrift port
+  required: true
+  value: "6627"
+- name: LOGVIEWER_PORT
+  description: Nimbus thrift port
+  required: true
+  value: '8000'
+- name: ZK_SERVERS
+  description: "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)"
+  required: true
+  value: "\"zk-server1\", \"zk-server2\""
+- name: SEEDS
+  description: >
+    "Nimbus seeds, FQDN values for all seeds in the cluster,
+     format must be: \"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\" (Note quote marks).
+     These value must be the list aff all replicas in the statefulset that will be created (<NAME>-i.<NAME>, 'i' is the replica index)."
+  required: true
+  value: "\"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\""
+- name: CONFIG_FILE_CONTENS
+  description: Add storm.yaml contents
+  required: true
+  value: |
+    # These properties will be generated automatically by provided params
+    # storm.zookeeper.servers
+    # nimbus.thrift.port
+    # nimbus.seeds
+    # storm.log.dir
+    # storm.local.dir
+    # Add any other properties here
+    # LogViewer
+    logviewer.childopts: "-Xmx128m"
+    logviewer.cleanup.age.mins: 10080
+    logviewer.appender.name: "A1"
+    logviewer.max.sum.worker.logs.size.mb: 4096
+    logviewer.max.per.worker.logs.size.mb: 2048
+    logs.users: null
+
+- name: RESOURCE_MEMORY_REQ
+  description: The memory resource request.
+  value: "500Mi"
+- name: RESOURCE_MEMORY_LIMIT
+  description: The limits for memory resource.
+  value: "1Gi"
+- name: RESOURCE_CPU_REQ
+  description: The CPU resource request.
+  value: "500m"
+- name: RESOURCE_CPU_LIMIT
+  description: The limits for CPU resource.
+  value: "1"
+
+objects:
+
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${NAME}-config
+    labels:
+      app: ${NAME}
+  data:
+    storm.yaml: |
+      ${CONFIG_FILE_CONTENS}
+      # Generated properties
+      storm.zookeeper.servers: [${ZK_SERVERS}]
+      storm.zookeeper.root: "/${NAME}"
+      nimbus.seeds : [${SEEDS}]
+      nimbus.thrift.port: ${PORT}
+      storm.local.dir: "${DATA_DIR}"
+      storm.log.dir: "${LOG_DIR}"
+      logviewer.port: ${LOGVIEWER_PORT}
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    ports:
+    - port: ${PORT}
+      name: nimbus
+    - port: ${LOGVIEWER_PORT}
+      name: logviewer
+    clusterIP: None
+    selector:
+      app: ${NAME}
+
+- apiVersion: apps/v1beta1
+  kind: StatefulSet
+  metadata:
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    serviceName: ${NAME}
+    replicas: ${REPLICAS}
+    template:
+      metadata:
+        labels:
+          app: ${NAME}
+      spec:
+        containers:
+        - name: ${NAME}
+          image: storm:${VERSION}
+          command:
+          - /bin/bash
+          - -c
+          args:
+          - storm --config ${CONF_DIR}/storm.yaml nimbus
+          resources:
+            requests:
+              memory: ${RESOURCE_MEMORY_REQ}
+              cpu: ${RESOURCE_CPU_REQ}
+            limits:
+              memory: ${RESOURCE_MEMORY_LIMIT}
+              cpu: ${RESOURCE_CPU_LIMIT}
+          imagePullPolicy: IfNotPresent
+          terminationMessagePath: /dev/termination-log
+          ports:
+          - containerPort: ${PORT}
+            protocol: "TCP"
+            name: nimbus
+          readinessProbe:
+            tcpSocket:
+              port: nimbus
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: nimbus
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          volumeMounts:
+          - name: config-volume
+            mountPath: ${CONF_DIR}
+          - name: data-volume
+            mountPath: ${DATA_DIR}
+          - name: log-volume
+            mountPath: ${LOG_DIR}
+        - name: ${NAME}-logviewer
+          image: storm:${VERSION}
+          command:
+          - /bin/bash
+          - -c
+          args:
+          - storm --config ${CONF_DIR}/storm.yaml logviewer
+          imagePullPolicy: IfNotPresent
+          terminationMessagePath: /dev/termination-log
+          ports:
+          - containerPort: ${LOGVIEWER_PORT}
+            protocol: "TCP"
+            name: logviewer
+          readinessProbe:
+            tcpSocket:
+              port: logviewer
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: logviewer
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+          - name: config-volume
+            mountPath: ${CONF_DIR}
+          - name: data-volume
+            mountPath: ${DATA_DIR}
+          - name: log-volume
+            mountPath: ${LOG_DIR}
+            restartPolicy: Always
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: config-volume
+          configMap:
+            name: ${NAME}-config
+        - name: data-volume
+          emptyDir: {}
+        - name: log-volume
+          emptyDir: {}
