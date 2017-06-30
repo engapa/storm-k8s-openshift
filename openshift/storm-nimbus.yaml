@@ -44,13 +44,6 @@ parameters:
   description: "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)"
   required: true
   value: "\"zk-server1\", \"zk-server2\""
-- name: SEEDS
-  description: >
-    "Nimbus seeds, FQDN values for all seeds in the cluster,
-     format must be: \"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\" (Note quote marks).
-     These value must be the list aff all replicas in the statefulset that will be created (<NAME>-i.<NAME>, 'i' is the replica index)."
-  required: true
-  value: "\"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\""
 - name: CONFIG_FILE_CONTENS
   description: Add storm.yaml contents
   required: true
@@ -72,7 +65,7 @@ parameters:
 
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
-  value: "500Mi"
+  value: "512Mi"
 - name: RESOURCE_MEMORY_LIMIT
   description: The limits for memory resource.
   value: "1Gi"
@@ -81,7 +74,7 @@ parameters:
   value: "500m"
 - name: RESOURCE_CPU_LIMIT
   description: The limits for CPU resource.
-  value: "1"
+  value: "500m"
 
 objects:
 
@@ -96,8 +89,6 @@ objects:
       ${CONFIG_FILE_CONTENS}
       # Generated properties
       storm.zookeeper.servers: [${ZK_SERVERS}]
-      storm.zookeeper.root: "/${NAME}"
-      nimbus.seeds : [${SEEDS}]
       nimbus.thrift.port: ${PORT}
       storm.local.dir: "${DATA_DIR}"
       storm.log.dir: "${LOG_DIR}"
@@ -109,6 +100,8 @@ objects:
     name: ${NAME}
     labels:
       app: ${NAME}
+    annotations:
+      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
   spec:
     ports:
     - port: ${PORT}
@@ -125,9 +118,28 @@ objects:
     name: ${NAME}
     labels:
       app: ${NAME}
+    annotations:
+      scheduler.alpha.kubernetes.io/affinity: >
+        {
+          "podAntiAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": [{
+              "labelSelector": {
+                "matchExpressions": [{
+                  "key": "app",
+                  "operator": "In",
+                  "values": ["${NAME}"]
+                }]
+              },
+              "topologyKey": "kubernetes.io/hostname"
+            }]
+          }
+        }
   spec:
     serviceName: ${NAME}
     replicas: ${REPLICAS}
+    selector:
+      matchLabels:
+        app: ${NAME}
     template:
       metadata:
         labels:
@@ -157,13 +169,13 @@ objects:
           readinessProbe:
             tcpSocket:
               port: nimbus
-            initialDelaySeconds: 15
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 15
           livenessProbe:
             tcpSocket:
               port: nimbus
-            initialDelaySeconds: 15
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 15
           volumeMounts:
           - name: config-volume
             mountPath: ${CONF_DIR}
@@ -187,12 +199,12 @@ objects:
           readinessProbe:
             tcpSocket:
               port: logviewer
-            initialDelaySeconds: 20
+            initialDelaySeconds: 30
             periodSeconds: 5
           livenessProbe:
             tcpSocket:
               port: logviewer
-            initialDelaySeconds: 20
+            initialDelaySeconds: 30
             periodSeconds: 20
           volumeMounts:
           - name: config-volume

@@ -4,7 +4,7 @@ metadata:
   name: storm-worker
   annotations:
     openshift.io/display-name: Storm-Worker
-    description: Storm Worker
+    description: Storm Worker. Number of replicas will be managed by an horizontal por autoscaler
     iconClass: icon-database
     tags: database,storm
 labels:
@@ -13,10 +13,18 @@ parameters:
 - name: NAME
   value: "storm-worker"
   required: true
-- name: REPLICAS
-  description: Number of replicas
+- name: MIN_REPLICAS
+  description: Min number of replicas
   required: true
   value: "1"
+- name: MAX_REPLICAS
+  description: Max number of replicas
+  required: true
+  value: "1"
+- name: CPU_SCALE_TARGET
+  description: Target CPU utilization (percentage) to scale up or down
+  required: true
+  value: "80"
 - name: VERSION
   value: "1.1.0"
   required: true
@@ -36,22 +44,21 @@ parameters:
   description: Nimbus thrift port
   required: true
   value: '6627'
-- name: NIMBUS_SVC_NAME
-  description: Nimbus service name
-  required: true
-  value: "storm-nimbus"
 - name: ZK_SERVERS
-  description: "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)"
+  description: >
+    "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)."
   required: true
   value: "\"zk-server1\", \"zk-server2\""
 - name: NIMBUS_SEEDS
   description: >
-    "Nimbus seeds, FQDN values for all seeds in the cluster,
-     format must be: \"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\" (Note quote marks)."
+     "Nimbus seeds, FQDN values for all seeds in the cluster,
+     format must be: \"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\",
+     \"storm-nimbus-1.storm-nimbus.myproject.svc.cluster.local\" (Note quote marks)."
   required: true
   value: "\"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.myproject.svc.cluster.local\""
 - name: SUPERVISOR_PORTS
-  description: "Supervisor ports, value format must be: \"port1\", \"port2\" (Note quote marks)"
+  description: >
+    "Supervisor ports, value format must be: port1, port2 (Note colon mark)."
   required: true
   value: "6700, 6701, 6702, 6703"
 - name: CONFIG_FILE_CONTENS
@@ -67,7 +74,7 @@ parameters:
     # Add any other properties here
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
-  value: "500Mi"
+  value: "512Mi"
 - name: RESOURCE_MEMORY_LIMIT
   description: The limits for memory resource.
   value: "1Gi"
@@ -93,9 +100,36 @@ objects:
       storm.zookeeper.servers: [${ZK_SERVERS}]
       nimbus.thrift.port: ${NIMBUS_THRIFT_PORT}
       nimbus.seeds : [${NIMBUS_SEEDS}]
+      drpc.servers: [${NIMBUS_SEEDS}]
       supervisor.slots.ports: [${SUPERVISOR_PORTS}]
       storm.local.dir: "${DATA_DIR}"
       storm.log.dir: "${LOG_DIR}"
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    ports:
+    - port: 6700
+      name: "3700"
+    - port: 6701
+      name: "3701"
+    - port: 6702
+      name: "3702"
+    - port: 6703
+      name: "3703"
+    - port: 3772
+      name: "3772"
+    - port: 3773
+      name: "3773"
+    - port: 3774
+      name: "3774"
+    clusterIP: None
+    selector:
+      app: ${NAME}
 
 - apiVersion: v1
   kind: DeploymentConfig
@@ -104,11 +138,11 @@ objects:
     labels:
       app: ${NAME}
   spec:
+    replicas: ${MIN_REPLICAS}
     triggers:
-    - type: ConfigChange
+    - type: "ConfigChange"
     strategy:
-      type: Rolling
-    replicas: ${REPLICAS}
+      type: "Rolling"
     template:
       metadata:
         labels:
@@ -137,6 +171,21 @@ objects:
              - storm --config ${CONF_DIR}/storm.yaml node-health-check
              initialDelaySeconds: 15
              periodSeconds: 5
+          ports:
+          - containerPort: 6700
+            protocol: "TCP"
+          - containerPort: 6701
+            protocol: "TCP"
+          - containerPort: 6702
+            protocol: "TCP"
+          - containerPort: 6703
+            protocol: "TCP"
+          - containerPort: 3772
+            protocol: "TCP"
+          - containerPort: 3773
+            protocol: "TCP"
+          - containerPort: 3774
+            protocol: "TCP"
           imagePullPolicy: IfNotPresent
           terminationMessagePath: /dev/termination-log
           volumeMounts:
@@ -156,3 +205,18 @@ objects:
           emptyDir: {}
         - name: log-volume
           emptyDir: {}
+
+- apiVersion: autoscaling/v1
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    scaleTargetRef:
+      apiVersion: v1
+      kind: DeploymentConfig
+      name: ${NAME}
+    minReplicas: ${MIN_REPLICAS}
+    maxReplicas: ${MAX_REPLICAS}
+    targetCPUUtilizationPercentage: ${CPU_SCALE_TARGET}
