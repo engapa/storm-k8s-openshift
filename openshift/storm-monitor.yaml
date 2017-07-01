@@ -62,15 +62,23 @@ parameters:
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
   value: "512Mi"
+  required: true
 - name: RESOURCE_MEMORY_LIMIT
   description: The limits for memory resource.
   value: "512Mi"
+  required: true
 - name: RESOURCE_CPU_REQ
   description: The CPU resource request.
   value: "250m"
+  required: true
 - name: RESOURCE_CPU_LIMIT
   description: The limits for CPU resource.
   value: "500m"
+  required: true
+- name: ROUTE_SERVICE_DOMAIN
+  description: "Service domain for external routes. The route URL will be: NAME.ROUTE_SERVICE_DOMAIN"
+  value: "svc.myproject.com"
+  required: true
 
 objects:
 
@@ -88,6 +96,7 @@ objects:
       nimbus.seeds : [${NIMBUS_SEEDS}]
       storm.local.dir: "${DATA_DIR}"
       storm.log.dir: "${LOG_DIR}"
+
 - apiVersion: v1
   kind: Service
   metadata:
@@ -160,3 +169,19 @@ objects:
           emptyDir: {}
         - name: log-volume
           emptyDir: {}
+
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    host: ${NAME}-ui.${ROUTE_SERVICE_DOMAIN}
+    to:
+      kind: Service
+      name: ${NAME}
+      weight: 100
+    port:
+      targetPort: ui
+    wildcardPolicy: None
