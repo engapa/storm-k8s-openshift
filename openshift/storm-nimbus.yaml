@@ -74,7 +74,7 @@ parameters:
   value: "500m"
 - name: RESOURCE_CPU_LIMIT
   description: The limits for CPU resource.
-  value: "500m"
+  value: "1"
 
 objects:
 
