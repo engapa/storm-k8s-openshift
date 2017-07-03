@@ -37,7 +37,7 @@ parameters:
     "Nimbus seeds, FQDN values for all seeds in the cluster,
      format must be: \"storm-nimbus-0.storm-nimbus\", \"storm-nimbus-1.storm-nimbus\" (Note quote marks)."
   required: true
-  value: "\"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\", \"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\""
+  value: "\"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.myproject.svc.cluster.local\""
 - name: CONFIG_FILE_CONTENS
   description: Add storm.yaml contents
   required: true
