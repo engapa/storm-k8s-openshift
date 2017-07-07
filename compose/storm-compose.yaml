@@ -1,0 +1,69 @@
+version: '2'
+services:
+  zookeeper:
+    image: engapa/zookeeper:3.4.10
+    container_name: zookeeper
+    restart: always
+    ports:
+    - 2181
+    command: zk_setup.sh && ./zkServer.sh start-foreground
+    environment:
+      JAVA_ZK_JVMFLAG: '"-Xms1G -Xmx2G"'
+  nimbus:
+    image: storm:1.1.0
+    container_name: nimbus
+    hostname: nimbus
+    restart: always
+    command: storm --config=/conf/storm.yaml nimbus
+    ports:
+    - 6627
+    depends_on:
+    - zookeeper
+    links:
+    - zookeeper:zk
+    volumes:
+    - ./storm.yaml:/conf/storm.yaml
+  worker:
+    image: storm:1.1
+    container_name: worker
+    command: storm supervisor
+    depends_on:
+    - nimbus
+    - zookeeper
+    links:
+    - nimbus:nimbus
+    - zookeeper:zk
+    restart: always
+    volumes:
+    - ./storm.yaml:/conf/storm.yaml
+    - /Users/engapa/cesar:/data
+  ui:
+    image: storm:1.1
+    container_name: ui
+    command: storm ui
+    ports:
+    - 8080:8080
+    depends_on:
+    - nimbus
+    - zookeeper
+    links:
+    - nimbus:nimbus
+    - zookeeper:zk
+    restart: always
+    volumes:
+    - ./storm.yaml:/conf/storm.yaml
+  pacemaker:
+    image: storm:1.1
+    container_name: ui
+    command: storm pacemaker
+    ports:
+    - 8080:8080
+    depends_on:
+    - nimbus
+    - zookeeper
+    links:
+    - nimbus:nimbus
+    - zookeeper:zk
+    restart: always
+    volumes:
+    - ./storm.yaml:/conf/storm.yaml
