@@ -1,19 +1,30 @@
-version: '2'
+version: '3.2'
 services:
   zookeeper:
-    image: zookeeper:3.4
+    image: engapa/zookeeper:3.4.10
     container_name: zookeeper
     restart: always
     ports:
     - 2181
+  pacemaker:
+    image: storm:1.1
+    container_name: pacemaker
+    hostname: pacemaker
+    command: storm --config /conf/storm.yaml pacemaker
+    ports:
+    - 6699
+    restart: always
+    volumes:
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
   nimbus:
-    image: storm:1.1.0
+    image: storm:1.1
     container_name: nimbus
     hostname: nimbus
     restart: always
     command: storm --config /conf/storm.yaml nimbus
     ports:
-    - 6627
+    - 6627:6627
     depends_on:
     - zookeeper
     - pacemaker
@@ -21,11 +32,18 @@ services:
     - zookeeper:zk
     - pacemaker:pacemaker
     volumes:
-    - ./storm.yaml:/conf/storm.yaml
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
   worker:
     image: storm:1.1
     container_name: worker
+    hostname: worker
     command: storm --config /conf/storm.yaml supervisor
+    ports:
+    - 6700
+    - 6701
+    - 6702
+    - 6703
     depends_on:
     - nimbus
     - zookeeper
@@ -34,7 +52,9 @@ services:
     - zookeeper:zk
     restart: always
     volumes:
-    - ./storm.yaml:/conf/storm.yaml
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - data:/data/
+    - logs:/logs/
   ui:
     image: storm:1.1
     container_name: ui
@@ -49,14 +69,23 @@ services:
     - zookeeper:zk
     restart: always
     volumes:
-    - ./storm.yaml:/conf/storm.yaml
-  pacemaker:
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
+  logviewer:
     image: storm:1.1
-    container_name: pacemaker
-    hostname: pacemaker
-    command: storm --config /conf/storm.yaml pacemaker
+    container_name: logviewer
+    hostname: logviewer
+    command: storm --config /conf/storm.yaml logviewer
     ports:
-    - 6699:6699
+    - 8000:8000
     restart: always
+    depends_on:
+    - nimbus
     volumes:
-    - ./storm.yaml:/conf/storm.yaml
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
+
+volumes:
+  logs:
+  data:
+

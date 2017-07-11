@@ -1,8 +1,78 @@
-pacemaker.servers:
-- pacemaker
+version: '3.2'
+services:
+  zookeeper:
+    image: engapa/zookeeper:3.4.10
+    container_name: zookeeper
+    restart: always
+    ports:
+    - 2181
+  nimbus:
+    image: storm:1.1
+    container_name: nimbus
+    hostname: nimbus
+    restart: always
+    command: storm --config /conf/storm.yaml nimbus
+    ports:
+    - 6627:6627
+    depends_on:
+    - zookeeper
+    links:
+    - zookeeper:zk
+    volumes:
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
+  worker:
+    image: storm:1.1
+    container_name: worker
+    hostname: worker
+    command: storm --config /conf/storm.yaml supervisor
+    ports:
+    - 6700
+    - 6701
+    - 6702
+    - 6703
+    depends_on:
+    - nimbus
+    - zookeeper
+    links:
+    - nimbus:nimbus
+    - zookeeper:zk
+    restart: always
+    volumes:
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - data:/data/
+    - logs:/logs/
+  ui:
+    image: storm:1.1
+    container_name: ui
+    command: storm --config /conf/storm.yaml ui
+    ports:
+    - 8080:8080
+    depends_on:
+    - nimbus
+    - zookeeper
+    links:
+    - nimbus:nimbus
+    - zookeeper:zk
+    restart: always
+    volumes:
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
+  logviewer:
+    image: storm:1.1
+    container_name: logviewer
+    hostname: logviewer
+    command: storm --config /conf/storm.yaml logviewer
+    ports:
+    - 8000:8000
+    restart: always
+    depends_on:
+    - nimbus
+    volumes:
+    - ./config/storm-config.yaml:/conf/storm.yaml
+    - logs:/logs/
 
-storm.zookeeper.servers: [zookeeper]
-nimbus.seeds: [nimbus]
-storm.log.dir: "/logs"
-storm.local.dir: "/data"
-storm.cluster.state.store: "org.apache.storm.pacemaker.pacemaker_state_factory"
+volumes:
+  logs:
+  data:
+

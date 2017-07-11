@@ -1,0 +1,8 @@
+pacemaker.servers:
+- pacemaker
+
+storm.zookeeper.servers: [zookeeper]
+nimbus.seeds: [nimbus]
+storm.log.dir: "/logs"
+storm.local.dir: "/data"
+storm.cluster.state.store: "org.apache.storm.pacemaker.pacemaker_state_factory"
