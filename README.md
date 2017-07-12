@@ -16,7 +16,7 @@ The keys of this ConfigMap are the name of the configuration files, and values a
 - DeploymentConfig (openshift) or Deployment (kubernetes): Define how to deploy pods.
 - Horizontal Pod Autoscaler: Change the number of replicas according to CPU usage.
 
-## #kubernetes
+### kubernetes
 
 If you are thinking about a storm deployment on kubernetes [these resources could help you](kubernetes).
 
