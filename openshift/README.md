@@ -19,10 +19,10 @@ If you haven't any of these roles then contact openshift cluster administrator t
 It isn't required to clone this repository, use this env variable to use the https url instead of local files:
 
 ```sh
-export STORM_PREFIX_REOURCES="https://raw.githubusercontent.com/engapa/storm-k8s-openshift/master/openshift/"
+export STORM_PREFIX_RESOURCES="https://raw.githubusercontent.com/engapa/storm-k8s-openshift/master/openshift/"
 ```
 
-## 0 - Zookeeper
+## Zookeeper
 
 Follow instructions at [here](https://github.com/engapa/zookeeper-k8s-openshift/tree/master/openshift) to get a required Zookeeper installation.
 
@@ -35,7 +35,43 @@ statefulset "zk" created
 
 Now we have a zookeeper cluster ready for storm. The zookeeper nodes will be available through this internal hostname list: `zk-0.zk-svc, zk-1.zk-svc`
 
-## 1 - Storm masters
+## Using pacemaker
+
+Pacemaker is a storm daemon designed to process heartbeats from workers.
+This deployment is optional but is a good idea to use it to keep in memory the worker heartbeats instead of write them on disk.
+
+You have more details at: http://storm.apache.org/releases/1.1.0/Pacemaker.html
+
+Create one/many storm pacemaker pod/s:
+
+```sh
+$ oc process -f ${STORM_PREFIX_REOURCES}storm-pacemaker.yaml \
+  -p NAME=storm-pacemaker \
+  -p PORT=6699
+  -p REPLICAS=1 | oc create -f -
+configmap "storm-pacemaker-config" created
+service "storm-pacemaker" created
+statefulset "storm-pacemaker" created
+```
+
+When you are going to create masters (nimbus) and workers (supervisor),
+you should add this section in suitable ConfigMaps (variable CONFIG_FILE_CONTENS,
+by default these lines are commented):
+
+```yaml
+pacemaker.servers: ["<NAME>-<i>.<NAME>.<PROJECT>.svc.cluster.local"]
+pacemaker.port: 6699
+storm.cluster.state.store: "org.apache.storm.pacemaker.pacemaker_state_factory"
+```
+
+where each server name in `pacemaker.servers` variable follows this format:
+`<NAME>-<i>.<NAME>.<PROJECT>.svc.cluster.local`,
+where:\
+-**NAME**: The value of the NAME param. In this example would be 'storm-pacemaker-0.storm-pacemaker.storm.svc.cluster.local'\
+-**i** : The ordinal or index of the node. In this case we have 1 replicas, the unique value is 0.\
+-**PROJECT**: The name of the project you are. In this case 'storm'.
+
+## Storm masters
 
 The masters or nimbus processes of the cluster can be created by typing this command:
 
@@ -43,7 +79,7 @@ The masters or nimbus processes of the cluster can be created by typing this com
 $ oc process -f ${STORM_PREFIX_REOURCES}storm-nimbus.yaml \
   -p NAME=storm-nimbus \
   -p REPLICAS=2 \
-  -p ZK_SERVERS="\"zk-0.zk-svc\", \"zk-1.zk-svc\"" | oc create -f -
+  -p ZK_SERVERS="\"zk-0.zk\", \"zk-1.zk\"" | oc create -f -
 configmap "storm-nimbus-config" created
 service "storm-nimbus" created
 statefulset "storm-nimbus" created
@@ -56,23 +92,7 @@ where:\
 -**i** : The ordinal or index of the node. In this case we have 2 replicas, values are [0,1]\
 -**PROJECT**: The name of the project you are. In this case 'storm'.
 
-## 2 - Storm UI
-
-```sh
-$ oc process -f ${STORM_PREFIX_REOURCES}storm-monitor.yaml \
-  -p NAME=storm-monitor \
-  -p NIMBUS_SEEDS="\"storm-nimbus-0.storm-nimbus.storm.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.storm.svc.cluster.local\"" \
-  -p ROUTE_SERVICE_DOMAIN=svc.domain.com | oc create -f -
-configmap "storm-monitor-config" created
-service "storm-monitor" created
-deploymentconfig "storm-monitor" created
-route "storm-monitor-ui" created
-```
-
--**NIMBUS_SEEDS**: The nimbus seed list, check the number of replicas and their complete hostnames in the bellow above section.\
--**ROUTE_SERVICE_DOMAIN**: This is the service domain of the openshift router, the public domain for services.
-
-## 3 - Storm workers
+## Storm workers
 
 ```sh
 $ oc process -f ${STORM_PREFIX_REOURCES}storm-worker.yaml \
@@ -88,6 +108,23 @@ horizontalpodautoscaler "storm-worker" created
 > NOTE: By default the MIN_REPLICAS and MAX_REPLICAS parameter values are `1`, change these values for other number of replicas.
 If you want to manage the number of replicas every time, note that these values must be equal, in other case the horizontal pod autoscaler takes the control
  (change the value of CPU_SCALE_TARGET if needed, default is 80 percent).
+
+## Storm UI
+
+```sh
+$ oc process -f ${STORM_PREFIX_REOURCES}storm-monitor.yaml \
+  -p NAME=storm-monitor \
+  -p NIMBUS_SEEDS="\"storm-nimbus-0.storm-nimbus.storm.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.storm.svc.cluster.local\"" \
+  -p ROUTE_SERVICE_DOMAIN=svc.domain.com | oc create -f -
+configmap "storm-monitor-config" created
+service "storm-monitor" created
+deploymentconfig "storm-monitor" created
+route "storm-monitor-ui" created
+```
+
+-**NIMBUS_SEEDS**: The nimbus seed list, check the number of replicas and their complete hostnames in the bellow above section.\
+-**ROUTE_SERVICE_DOMAIN**: This is the service domain of the openshift router, the public domain for services.
+
 
 ## Customizing configuration
 
@@ -142,6 +179,22 @@ this means that if any container is removed then it will be recreated automatica
 Contents for these files could have been changed in provision time, the suitable parameter is `CONFIG_FILE_CONTENS`.
 Please note in these case that we notify you generated properties from param values.
 
+## Launch a topology
+
+### Manual mode
+
+Enter into nimbus leader or worker container and launch an example :
+
+```sh
+$ oc rsh ui
+$ storm --config /conf/storm.yaml jar examples.jar
+```
+
+### By template
+
+The idea is to use a deploy job which launches the topology by providing the nested parameter.
+
+> **TODO**: In progress
 
 ## Cleanup
 
