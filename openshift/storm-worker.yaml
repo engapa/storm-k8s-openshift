@@ -46,16 +46,16 @@ parameters:
   value: '6627'
 - name: ZK_SERVERS
   description: >
-    "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)."
+    "Zookeeper servers, value format must be: \"zk-0.zk\", \"zk-1.zk\", \"zk-2.zk\" (Note quote marks)."
   required: true
-  value: "\"zk-server1\", \"zk-server2\""
+  value: "\"zk-0.zk\", \"zk-1.zk\",\"zk-2.zk\""
 - name: NIMBUS_SEEDS
   description: >
      "Nimbus seeds, FQDN values for all seeds in the cluster,
-     format must be: \"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\",
-     \"storm-nimbus-1.storm-nimbus.myproject.svc.cluster.local\" (Note quote marks)."
+     format must be: \"storm-nimbus-0.storm-nimbus.storm.svc.cluster.local\",
+     \"storm-nimbus-1.storm-nimbus.storm.svc.cluster.local\" (Note quote marks)."
   required: true
-  value: "\"storm-nimbus-0.storm-nimbus.myproject.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.myproject.svc.cluster.local\""
+  value: "\"storm-nimbus-0.storm-nimbus.storm.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.storm.svc.cluster.local\""
 - name: SUPERVISOR_PORTS
   description: >
     "Supervisor ports, value format must be: port1, port2 (Note colon mark)."
@@ -72,6 +72,10 @@ parameters:
     # storm.log.dir
     # storm.local.dir
     # Add any other properties here
+    # Pacemaker
+    #pacemaker.servers: []
+    #pacemaker.port: 6699
+    #storm.cluster.state.store: "org.apache.storm.pacemaker.pacemaker_state_factory"
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
   value: "512Mi"
@@ -137,6 +141,22 @@ objects:
     name: ${NAME}
     labels:
       app: ${NAME}
+    annotations:
+      scheduler.alpha.kubernetes.io/affinity: >
+        {
+          "podAntiAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": [{
+              "labelSelector": {
+                "matchExpressions": [{
+                  "key": "app",
+                  "operator": "In",
+                  "values": ["${NAME}"]
+                }]
+              },
+              "topologyKey": "kubernetes.io/hostname"
+            }]
+          }
+        }
   spec:
     replicas: ${MIN_REPLICAS}
     triggers:
