@@ -1,5 +1,13 @@
 version: '3.2'
 services:
+  ubuntu:
+    image: ubuntu:17.10
+    container_name: ubuntu
+    restart: always
+    ports:
+    - 22
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
   zookeeper:
     image: engapa/zookeeper:3.4.10
     container_name: zookeeper

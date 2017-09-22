@@ -1,18 +1,18 @@
 kind: Template
 apiVersion: v1
 metadata:
-  name: storm-monitor
+  name: storm-pacemaker
   annotations:
-    openshift.io/display-name: Storm-Monitor
-    description: Storm Monitor
+    openshift.io/display-name: Storm-Pacemaker
+    description: Storm Pacemaker
     iconClass: icon-database
     tags: database,storm
 labels:
-  template: storm-monitor
+  template: storm-pacemaker
   component: storm
 parameters:
 - name: NAME
-  value: "storm-monitor"
+  value: "storm-pacemaker"
   required: true
 - name: VERSION
   value: "1.1.0"
@@ -29,56 +29,40 @@ parameters:
   description: Log Directory
   required: true
   value: "/logs"
-- name: UI_PORT
+- name: PORT
   description: Webconsole port
   required: true
-  value: '8080'
-- name: NIMBUS_SEEDS
-  description: >
-    "Nimbus seeds, FQDN values for all seeds in the cluster,
-     format must be: \"storm-nimbus-0.storm-nimbus.storm.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.storm.svc.cluster.local\" (Note quote marks)."
-  required: true
-  value: "\"storm-nimbus-0.storm-nimbus.storm.svc.cluster.local\", \"storm-nimbus-1.storm-nimbus.storm.svc.cluster.local\""
+  value: '6699'
 - name: CONFIG_FILE_CONTENS
-  description: Add storm.yaml contents
+  description: Add storm-config.yaml contents
   required: true
   value: |
     # These properties will be generated automatically by provided params
-    # storm.zookeeper.servers
-    # nimbus.thrift.port
-    # nimbus.seeds
-    # ui.port
-    # logviewer.port
+    # pacemaker.port
     # storm.log.dir
     # storm.local.dir
     # Add any other properties here
-    ui.host: 0.0.0.0
-    ui.childopts: "-Xmx768m"
-    ui.actions.enabled: true
-    ui.filter: null
-    ui.filter.params: null
-    ui.users: null
-    ui.header.buffer.bytes: 4096
-    ui.http.creds.plugin: org.apache.storm.security.auth.DefaultHttpCredentialsPlugin
+    pacemaker.base.threads: 10
+    pacemaker.max.threads: 50
+    pacemaker.thread.timeout: 10
+    pacemaker.childopts: "-Xmx1024m"
+    pacemaker.auth.method: "NONE"
+    pacemaker.kerberos.users: []
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
-  value: "512Mi"
+  value: "1024Mi"
   required: true
 - name: RESOURCE_MEMORY_LIMIT
   description: The limits for memory resource.
-  value: "512Mi"
+  value: "1024Mi"
   required: true
 - name: RESOURCE_CPU_REQ
   description: The CPU resource request.
-  value: "250m"
+  value: "500m"
   required: true
 - name: RESOURCE_CPU_LIMIT
   description: The limits for CPU resource.
-  value: "500m"
-  required: true
-- name: ROUTE_SERVICE_DOMAIN
-  description: "Service domain for external routes. The route URL will be: NAME.ROUTE_SERVICE_DOMAIN"
-  value: "svc.public.com"
+  value: "1"
   required: true
 
 objects:
@@ -93,10 +77,9 @@ objects:
     storm.yaml: |
       ${CONFIG_FILE_CONTENS}
       # Generated properties
-      ui.port: ${UI_PORT}
-      nimbus.seeds : [${NIMBUS_SEEDS}]
       storm.local.dir: "${DATA_DIR}"
       storm.log.dir: "${LOG_DIR}"
+      pacemaker.port: ${PORT}
 
 - apiVersion: v1
   kind: Service
@@ -106,51 +89,67 @@ objects:
       app: ${NAME}
   spec:
     ports:
-    - port: ${UI_PORT}
-      name: ui
+    - port: ${PORT}
+      name: pacemaker
     clusterIP: None
     selector:
       app: ${NAME}
 
-- apiVersion: v1
-  kind: DeploymentConfig
+- apiVersion: apps/v1beta1
+  kind: StatefulSet
   metadata:
     name: ${NAME}
     labels:
       app: ${NAME}
+    annotations:
+      scheduler.alpha.kubernetes.io/affinity: >
+        {
+          "podAntiAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": [{
+              "labelSelector": {
+                "matchExpressions": [{
+                  "key": "app",
+                  "operator": "In",
+                  "values": ["${NAME}"]
+                }]
+              },
+              "topologyKey": "kubernetes.io/hostname"
+            }]
+          }
+        }
   spec:
-    replicas: 1
-    triggers:
-    - type: "ConfigChange"
-    strategy:
-      type: "Rolling"
+    serviceName: ${NAME}
+    replicas: ${REPLICAS}
+    selector:
+      matchLabels:
+        app: ${NAME}
     template:
       metadata:
         labels:
           app: ${NAME}
       spec:
         containers:
-        - name: ${NAME}-ui
+        - name: ${NAME}-pacemaker
           image: storm:${VERSION}
           command:
           - /bin/bash
           - -c
           args:
-          - storm --config ${CONF_DIR}/storm.yaml ui
+          - storm --config ${CONF_DIR}/storm.yaml pacemaker
           imagePullPolicy: IfNotPresent
           terminationMessagePath: /dev/termination-log
           ports:
-          - containerPort: ${UI_PORT}
+          - containerPort: ${PORT}
             protocol: "TCP"
-            name: ui
+            name: pacemaker
           readinessProbe:
             tcpSocket:
-              port: ui
+              port: pacemaker
             initialDelaySeconds: 20
             periodSeconds: 5
           livenessProbe:
             tcpSocket:
-              port: ui
+              port: pacemaker
             initialDelaySeconds: 20
             periodSeconds: 20
           volumeMounts:
@@ -170,19 +169,3 @@ objects:
           emptyDir: {}
         - name: log-volume
           emptyDir: {}
-
-- apiVersion: v1
-  kind: Route
-  metadata:
-    name: ${NAME}
-    labels:
-      app: ${NAME}
-  spec:
-    host: ${NAME}-ui.${ROUTE_SERVICE_DOMAIN}
-    to:
-      kind: Service
-      name: ${NAME}
-      weight: 100
-    port:
-      targetPort: ui
-    wildcardPolicy: None

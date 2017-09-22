@@ -9,6 +9,7 @@ metadata:
     tags: database,storm
 labels:
   template: storm-worker
+  component: storm
 parameters:
 - name: NAME
   value: "storm-worker"

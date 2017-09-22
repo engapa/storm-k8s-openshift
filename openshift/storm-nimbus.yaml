@@ -9,6 +9,7 @@ metadata:
     tags: database,storm
 labels:
   template: storm-nimbus
+  component: storm
 parameters:
 - name: NAME
   value: "storm-nimbus"
@@ -41,9 +42,9 @@ parameters:
   required: true
   value: '8000'
 - name: ZK_SERVERS
-  description: "Zookeeper servers, value format must be: \"zk-server1\", \"zk-server2\" (Note quote marks)"
+  description: "Zookeeper servers, value format must be: \"zk-0.zk\", \"zk-1.zk\", \"zk-2.zk\" (Note quote marks)"
   required: true
-  value: "\"zk-server1\", \"zk-server2\""
+  value: "\"zk-0.zk\", \"zk-1.zk\", \"zk-2.zk\""
 - name: CONFIG_FILE_CONTENS
   description: Add storm.yaml contents
   required: true
@@ -62,6 +63,10 @@ parameters:
     logviewer.max.sum.worker.logs.size.mb: 4096
     logviewer.max.per.worker.logs.size.mb: 2048
     logs.users: null
+    # Pacemaker
+    #pacemaker.servers: []
+    #pacemaker.port: 6699
+    #storm.cluster.state.store: "org.apache.storm.pacemaker.pacemaker_state_factory"
 
 - name: RESOURCE_MEMORY_REQ
   description: The memory resource request.
@@ -102,6 +107,12 @@ objects:
       app: ${NAME}
     annotations:
       service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+      service.alpha.openshift.io/dependencies: >
+        [
+          {"name":"storm-monitor","namespace":"","kind":"Service"},
+          {"name":"storm-pacemaker","namespace":"","kind":"Service"},
+          {"name":"storm-worker","namespace":"","kind":"Service"}
+        ]
   spec:
     ports:
     - port: ${PORT}
