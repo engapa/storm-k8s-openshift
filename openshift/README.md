@@ -40,7 +40,7 @@ Now we have a zookeeper cluster ready for storm. The zookeeper nodes will be ava
 Pacemaker is a storm daemon designed to process heartbeats from workers.
 This deployment is optional but is a good idea to use it to keep in memory the worker heartbeats instead of write them on disk.
 
-You have more details at: http://storm.apache.org/releases/1.1.0/Pacemaker.html
+You have more details at: http://storm.apache.org/releases/1.1.1/Pacemaker.html
 
 Create one/many storm pacemaker pod/s:
 

@@ -15,7 +15,7 @@ services:
     ports:
     - 2181
   pacemaker:
-    image: storm:1.1
+    image: storm:1.1.1
     container_name: pacemaker
     hostname: pacemaker
     command: storm --config /conf/storm.yaml pacemaker
